@@ -1,8 +1,8 @@
 {
-  "name": "custom-copilot-agent",
+  "name": "daily-dose-copilot-tool",
   "version": "0.1.0",
   "private": true,
-  "description": "GitHub Copilot custom agent for managing quotes in Daily Dose — CLI extension scaffold (.github/extensions/quotes) plus programmatic harness (harness/).",
+  "description": "GitHub Copilot tool integration for Daily Dose quotes — CLI extension scaffold (.github/extensions/quotes) plus programmatic harness (harness/).",
   "type": "module",
   "scripts": {
     "harness": "tsx harness/run.ts",

@@ -1,4 +1,4 @@
-# custom-copilot-agent
+# daily-dose-copilot-tool
 
 A GitHub **Copilot CLI extension** that exposes tools for managing
 curated quotes in the [Daily Dose](https://github.com/sneharosesanthosh/daily-dose)
