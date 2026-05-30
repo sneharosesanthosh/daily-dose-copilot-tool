@@ -7,7 +7,7 @@ Doubles as a study artifact for GH-600 Domain 2.
 Initial source:
 <https://docs.github.com/en/copilot/how-tos/copilot-sdk/use-copilot-sdk/custom-agents>
 
-Last updated: 2026-05-26.
+Last updated: 2026-05-30.
 
 ## Pass 1 — end-to-end verification (2026-05-26)
 
@@ -36,6 +36,62 @@ load in Copilot CLI 1.0.51. The CLI's project-extension auto-discovery
 is gated behind an experimental feature flag (`/experimental on`) that,
 even when enabled, did not trigger extension scanning in our testing.
 SDK is `1.0.0-beta.4` — the feature may stabilize in a future release.
+
+## Pass 2 — MCP server extraction & verification (2026-05-28 → 2026-05-30)
+
+Pass 2 moved the `add_quote` handler out of the inline harness tool and
+into a **standalone MCP server** (`mcp-servers/quotes-server/`). The
+server speaks JSON-RPC over stdio and is consumed by hosts via config —
+no host-specific code.
+
+**Structure shipped**:
+
+- `mcp-servers/quotes-server/server.ts` — instantiates `McpServer`,
+  registers tools, connects `StdioServerTransport`.
+- `mcp-servers/quotes-server/tools/add-quote.ts` — `registerAddQuote()`;
+  one file per tool so Scope B (`list`/`search`/`delete`) can drop in
+  later without touching `server.ts`.
+
+**Schema gap surfaced during the run**: the MCP SDK's TS types accept a
+generic schema object, but at **runtime** `McpServer.registerTool`
+requires a **Zod schema instance** (or raw Zod shape), not a plain JSON
+Schema. Error: *"inputSchema must be a Zod schema or raw shape, received
+an unrecognized object."* Fixed by installing `zod` and rewriting the
+tool with `z.object({ ... }).describe()` per field — which also auto-types
+the handler args via Zod inference. The docs didn't state this; it was
+only visible by reading the SDK's `.d.ts`.
+
+**Verified flow (harness path, 2026-05-28)**:
+
+1. Harness `createSession({ mcpServers: { quotes: { type: "stdio",
+   command: "npx", args: ["tsx", <server.ts>] } } })`.
+2. Copilot CLI spawned the MCP server as a child process.
+3. Agent called the MCP-exposed tool; handler POSTed to Daily Dose.
+4. Daily Dose returned `201` with `id: 30`.
+
+   *(First attempt this run timed out at 60s — Daily Dose wasn't running
+   on `localhost:3000`, the handler hit `ECONNREFUSED` and the agent fell
+   back to tutorial text instead of saving. Starting Daily Dose and
+   re-running fixed it. Lesson: the MCP server is a dumb proxy; the
+   backing API must be up.)*
+
+**Cross-vendor portability verified (Claude Desktop, 2026-05-30)**:
+
+The *same* server, with *zero* code changes, was registered in Claude
+Desktop's `~/Library/Application Support/Claude/claude_desktop_config.json`
+and successfully called from a Desktop chat. This is the payoff of MCP
+being a protocol rather than a vendor SDK: one server, two unrelated
+hosts (Copilot CLI harness + Claude Desktop). Mirrors how published
+servers (the official `filesystem`/`git` reference servers, GitHub's
+`github-mcp-server`) plug into many hosts unchanged.
+
+**Scoping learned**: a server's reach follows the **config file**, not
+the project folder. The `quotes` entry in Claude Desktop's global config
+is available in *every* Desktop chat. By contrast, the `github` server
+installed via Claude **Code** lives under
+`projects["…/daily-dose"].mcpServers` in `~/.claude.json` and only loads
+when Claude Code runs inside that folder — genuine project scoping, a
+Claude-Code feature, not a Desktop one.
 
 ## The big conceptual gap
 
@@ -115,11 +171,11 @@ version once GA.
 
 ## Open follow-ups
 
-- **Pass 2 — MCP server extraction**: move `add_quote`'s handler into a
-  separate MCP server process; consume it via
-  `joinSession({ mcpServers: { quotes: { ... } } })` (extension path) or
-  `SessionConfig.mcpServers` (harness path). The SDK supports MCP
-  servers natively at both session and custom-agent level.
+- **Pass 2 — MCP server extraction**: ✅ **DONE** (see "Pass 2" section
+  above). Handler now lives in a standalone MCP server consumed via
+  `SessionConfig.mcpServers` (harness) and Claude Desktop config
+  (cross-vendor). Extension-path consumption via `joinSession` is still
+  untested because the extension itself doesn't load on CLI 1.0.51.
 - **Multi-tool routing (Scope B from lookup.md)**: add `list_quotes`,
   `search_quotes`, `delete_quote`. Demonstrates the agent choosing
   between tools. Requires those endpoints to exist on Daily Dose.
