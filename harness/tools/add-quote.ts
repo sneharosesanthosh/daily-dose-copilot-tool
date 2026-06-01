@@ -1,3 +1,10 @@
+// DEPRECATED — dead code. Written during the Pass-1 harness attempt, before
+// the MCP server existed, when the tool was defined inline as a Copilot SDK
+// `Tool`. The tool now lives in the MCP server
+// (mcp-servers/quotes-server/tools/add-quote.ts) and harness/run.ts talks to
+// that server over MCP — nothing imports this file. Kept for reference; safe
+// to delete.
+
 import type { Tool } from "@github/copilot-sdk";
 
 export interface AddQuoteInput {
