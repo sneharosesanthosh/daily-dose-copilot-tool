@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "harness": "tsx harness/run.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "harness:mcp": "tsx harness/mcp-tools.ts"
   },
   "dependencies": {
     "@github/copilot-sdk": "latest",
