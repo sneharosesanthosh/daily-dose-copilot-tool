@@ -1,3 +1,6 @@
+
+// This extension registers an inline tool for adding quotes to the Daily Dose collection.
+
 import { joinSession } from "@github/copilot-sdk/extension";
 
 await joinSession({
