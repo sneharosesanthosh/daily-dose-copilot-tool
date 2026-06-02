@@ -26,6 +26,28 @@ function childEnv(): Record<string, string> {
   return env;
 }
 
+// Client-side MCP allow-list. The host (this harness) — not the server —
+// decides which tools may be used, mirroring how Copilot CLI / Claude Desktop
+// enforce an allow-list in *their* config. Set QUOTES_ALLOWED_TOOLS to a
+// comma-separated list to restrict; leave it unset to allow every tool.
+//
+//   QUOTES_ALLOWED_TOOLS="add_quote,read_quotes" npm run harness:mcp
+//
+// Returns null when no allow-list is configured (everything permitted).
+function allowedTools(): Set<string> | null {
+  const raw = process.env.QUOTES_ALLOWED_TOOLS;
+  if (!raw) return null;
+  const names = raw
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean);
+  return new Set(names);
+}
+
+function isAllowed(allow: Set<string> | null, name: string): boolean {
+  return allow === null || allow.has(name);
+}
+
 // Pull the plain-text part out of a tool's result so we can print it.
 function textOf(result: { content?: Array<{ type: string; text?: string }> }): string {
   return (result.content ?? [])
@@ -38,8 +60,14 @@ async function callTool(
   client: Client,
   name: string,
   args: Record<string, unknown>,
+  allow: Set<string> | null,
 ): Promise<string> {
   console.log(`\n→ ${name}(${JSON.stringify(args)})`);
+  if (!isAllowed(allow, name)) {
+    const msg = `⛔ blocked by allow-list — "${name}" is not in QUOTES_ALLOWED_TOOLS`;
+    console.log(msg);
+    return msg;
+  }
   const result = (await client.callTool({ name, arguments: args })) as {
     content?: Array<{ type: string; text?: string }>;
   };
@@ -51,14 +79,19 @@ async function callTool(
 // Full CRUD smoke cycle. add_quote echoes "(id: N)" on success, so we read that
 // id back out to drive update_quote and delete_quote. If no id came back, we
 // skip the mutations rather than guess at one.
-async function runCrudCycle(client: Client) {
-  const added = await callTool(client, "add_quote", {
-    text: "The only way to do great work is to love what you do.",
-    author: "Steve Jobs",
-    category: "harness-smoke-test",
-  });
+async function runCrudCycle(client: Client, allow: Set<string> | null) {
+  const added = await callTool(
+    client,
+    "add_quote",
+    {
+      text: "The only way to do great work is to love what you do.",
+      author: "Steve Jobs",
+      category: "harness-smoke-test",
+    },
+    allow,
+  );
 
-  await callTool(client, "read_quotes", { category: "harness-smoke-test" });
+  await callTool(client, "read_quotes", { category: "harness-smoke-test" }, allow);
 
   const id = added.match(/\(id:\s*(\d+)\)/)?.[1];
   if (!id) {
@@ -68,11 +101,13 @@ async function runCrudCycle(client: Client) {
     return;
   }
 
-  await callTool(client, "update_quote", {
-    id: Number(id),
-    category: "harness-smoke-test-updated",
-  });
-  await callTool(client, "delete_quote", { id: Number(id) });
+  await callTool(
+    client,
+    "update_quote",
+    { id: Number(id), category: "harness-smoke-test-updated" },
+    allow,
+  );
+  await callTool(client, "delete_quote", { id: Number(id) }, allow);
 }
 
 async function main() {
@@ -94,6 +129,8 @@ async function main() {
   try {
     await client.connect(transport);
 
+    const allow = allowedTools();
+
     const { tools } = await client.listTools();
     console.log(
       `Connected. Server exposes ${tools.length} tool(s): ${tools
@@ -101,13 +138,25 @@ async function main() {
         .join(", ")}`,
     );
 
+    // An allow-list hides the tools the host won't permit, so the agent only
+    // ever "sees" the approved subset. Mirror that here.
+    if (allow) {
+      const visible = tools.filter((t) => allow.has(t.name)).map((t) => t.name);
+      const hidden = tools.filter((t) => !allow.has(t.name)).map((t) => t.name);
+      console.log(
+        `Allow-list active. Agent sees ${visible.length}: ${
+          visible.join(", ") || "(none)"
+        }${hidden.length ? `  |  hidden: ${hidden.join(", ")}` : ""}`,
+      );
+    }
+
     // Single-tool mode: `harness:mcp -- <tool> '<json args>'`
     const [toolName, rawArgs] = process.argv.slice(2);
     if (toolName) {
       const args = rawArgs ? JSON.parse(rawArgs) : {};
-      await callTool(client, toolName, args);
+      await callTool(client, toolName, args, allow);
     } else {
-      await runCrudCycle(client);
+      await runCrudCycle(client, allow);
     }
   } finally {
     await client.close();
