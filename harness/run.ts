@@ -1,5 +1,5 @@
 import { CopilotClient, approveAll } from "@github/copilot-sdk";
-import { addQuoteTool } from "./tools/add-quote.js";
+import { resolve } from "node:path";
 
 const prompt = process.argv.slice(2).join(" ").trim();
 if (!prompt) {
@@ -15,7 +15,14 @@ async function main() {
 
   try {
     const session = await client.createSession({
-      tools: [addQuoteTool],
+      mcpServers: {
+        quotes: {
+          type: "stdio",
+          command: "npx",
+          args: ["tsx", resolve("mcp-servers/quotes-server/server.ts")],
+          tools: ["*"],
+        },
+      },
       onPermissionRequest: approveAll,
     });
 

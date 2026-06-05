@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__quotes__add_quote",
+      "mcp__quotes__read_quotes",
+      "mcp__quotes__update_quote"
+    ],
+    "deny": [
+      "mcp__quotes__delete_quote"
+    ]
+  },
+  "enabledMcpjsonServers": ["quotes"]
+}

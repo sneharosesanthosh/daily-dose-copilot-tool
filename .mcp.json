@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "quotes": {
+      "command": "npx",
+      "args": ["tsx", "mcp-servers/quotes-server/server.ts"],
+      "env": {
+        "DAILY_DOSE_API_URL": "${DAILY_DOSE_API_URL}",
+        "DAILY_DOSE_API_TOKEN": "${DAILY_DOSE_API_TOKEN}"
+      }
+    }
+  }
+}
