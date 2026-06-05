@@ -7,7 +7,7 @@ Doubles as a study artifact for GH-600 Domain 2.
 Initial source:
 <https://docs.github.com/en/copilot/how-tos/copilot-sdk/use-copilot-sdk/custom-agents>
 
-Last updated: 2026-05-30.
+Last updated: 2026-06-05.
 
 ## Pass 1 — end-to-end verification (2026-05-26)
 
@@ -93,6 +93,43 @@ installed via Claude **Code** lives under
 when Claude Code runs inside that folder — genuine project scoping, a
 Claude-Code feature, not a Desktop one.
 
+## Pass 3 — tool-level access control (2026-06-02 → 2026-06-03)
+
+Pass 2 proved one server runs unchanged across hosts. Pass 3 asked the
+follow-on: once a server is connected, *who decides which of its tools an
+agent may call?* We landed on **three independent gates**, deliberately at
+different layers, with `delete_quote` as the tool to lock down.
+
+**The three gates (defence in depth)**:
+
+| Gate | Lives in | Controls | Scope |
+|---|---|---|---|
+| `enableAllProjectMcpServers` / `enabledMcpjsonServers` | client (`.claude/settings.json`) | whether to connect to a server at all | server-level |
+| `permissions.allow` / `deny` | client (`.claude/settings.json`) | which tools *this client* may call | tool-level, client side |
+| `QUOTES_ENABLED_TOOLS` | the server process (`server.ts`) | which tools the server registers/advertises | tool-level, at the source |
+
+**Key insight — the layers don't cancel.** The server-side gate only calls
+`registerTool` for enabled tools, so a disabled tool never appears in the
+JSON-RPC tool list. No client config — not even
+`enableAllProjectMcpServers: true` — can call a tool that was never put on
+the wire. Client allow-lists are policy/convenience; the server gate is the
+real boundary. What it does **not** stop is a direct HTTP call to Daily Dose
+(e.g. Bash `curl`) — that boundary lives in Daily Dose's own route auth, not
+in the MCP layer.
+
+**Shipped**:
+
+- `.mcp.json` — checked-in project registration of the quotes server.
+- `.claude/settings.json` — `allow` add/read/update, `deny` delete (client-side
+  tool scoping).
+- `harness/mcp-tools.ts` — `QUOTES_ALLOWED_TOOLS` client-side allow-list in
+  the free harness, mirroring the settings.json policy.
+- `mcp-servers/quotes-server/server.ts` — `QUOTES_ENABLED_TOOLS` server-side
+  gate (the source of truth).
+- `docs/mcp-allow-list.md` — documents all three layers.
+- Legacy `harness/tools/add-quote.ts` marked deprecated (superseded by the
+  MCP server tool).
+
 ## The big conceptual gap
 
 **Gap:** The public docs page describes "custom agents" in language that
@@ -176,11 +213,15 @@ version once GA.
   `SessionConfig.mcpServers` (harness) and Claude Desktop config
   (cross-vendor). Extension-path consumption via `joinSession` is still
   untested because the extension itself doesn't load on CLI 1.0.51.
-- **Multi-tool routing (Scope B from lookup.md)**: add `list_quotes`,
-  `search_quotes`, `delete_quote`. Demonstrates the agent choosing
-  between tools. Requires those endpoints to exist on Daily Dose.
+- **Multi-tool routing (Scope B from lookup.md)**: ✅ **mostly DONE**.
+  `read_quotes`, `update_quote`, and `delete_quote` now ship alongside
+  `add_quote` — full CRUD, one file per tool under
+  `mcp-servers/quotes-server/tools/`. Still open: a dedicated
+  `search_quotes` (query) tool, if Daily Dose grows a search endpoint.
+- **Tool-level access control**: ✅ **DONE** — see "Pass 3" above
+  (client allow-lists + server-side `QUOTES_ENABLED_TOOLS` gate).
 - **Extension auto-discovery on a stable CLI release**: retest the
   `.github/extensions/quotes/extension.mjs` path once SDK leaves beta
-  and the `EXTENSIONS` experimental flag is GA.
-- **Pin SDK version**: replace `"latest"` in `package.json` with a
-  specific version once SDK is GA.
+  and the `EXTENSIONS` experimental flag is GA. **Blocked externally.**
+- **Pin SDK version**: ✅ **DONE** — `@github/copilot-sdk` pinned to
+  `1.0.0-beta.4` in `package.json`. Revisit pin once SDK is GA.
